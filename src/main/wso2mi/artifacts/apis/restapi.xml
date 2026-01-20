@@ -121,8 +121,8 @@
                             <!-- Store original payload for later use -->
                             <property name="originalPayload" expression="json-eval($)" scope="default" type="STRING"/>
                             
-                            <!-- Insert order into database using dbreport mediator -->
-                            <!-- Note: Ensure the orders table exists with columns: order_id, customer_id, customer_name, item_count, total -->
+                            <!-- Insert order into database using dbreport mediator (handles duplicates gracefully) -->
+                            <!-- Note: Stores both parsed fields and full JSON payload -->
                             <dbreport>
                                 <connection>
                                     <pool>
@@ -130,12 +130,13 @@
                                     </pool>
                                 </connection>
                                 <statement>
-                                    <sql>INSERT INTO orders (order_id, customer_id, customer_name, item_count, total, created_at) VALUES (?, ?, ?, ?, ?, NOW())</sql>
+                                    <sql>INSERT INTO orders (order_id, customer_id, customer_name, item_count, total, order_data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE customer_id = VALUES(customer_id), customer_name = VALUES(customer_name), item_count = VALUES(item_count), total = VALUES(total), order_data = VALUES(order_data), created_at = NOW()</sql>
                                     <parameter expression="get-property('orderId')" type="VARCHAR"/>
                                     <parameter expression="get-property('customerId')" type="VARCHAR"/>
                                     <parameter expression="get-property('customerName')" type="VARCHAR"/>
                                     <parameter expression="get-property('itemCount')" type="INTEGER"/>
                                     <parameter expression="get-property('orderTotal')" type="DOUBLE"/>
+                                    <parameter expression="get-property('originalPayload')" type="VARCHAR"/>
                                 </statement>
                             </dbreport>
                             

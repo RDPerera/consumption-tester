@@ -1,26 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Sequence to process messages from orderQueue -->
 <sequence xmlns="http://ws.apache.org/ns/synapse" name="ProcessOrderSequence">
-    <!-- Step 1: Log incoming message from RabbitMQ -->
-    <log category="INFO" level="custom">
-        <property name="Listener" value="OrderQueueListener"/>
-        <property name="Queue" value="orderQueue"/>
-        <property name="Message" expression="$body"/>
-    </log>
-    
-    <!-- Step 2: Extract message content -->
+    <!-- Step 1: Extract message content (minimal logging) -->
     <property name="messageContent" expression="json-eval($)" scope="default" type="STRING"/>
     <property name="orderId" expression="json-eval($.orderId)" scope="default" type="STRING"/>
     <property name="customerId" expression="json-eval($.customer.id)" scope="default" type="STRING"/>
+    <property name="customerName" expression="json-eval($.customer.name)" scope="default" type="STRING"/>
+    <property name="itemCount" expression="json-eval($.items.length())" scope="default" type="INTEGER"/>
+    <property name="orderTotal" expression="json-eval($.total)" scope="default" type="STRING"/>
     
-    <!-- Step 3: Log extracted details -->
-    <log category="INFO" level="custom">
-        <property name="OrderId" expression="get-property('orderId')"/>
-        <property name="CustomerId" expression="get-property('customerId')"/>
-        <property name="Status" value="Processing order from RabbitMQ"/>
-    </log>
-    
-    <!-- Step 4: Store in database (handles duplicates gracefully) -->
+    <!-- Step 2: Store in database (handles duplicates gracefully, stores both parsed fields and full JSON) -->
     <dbreport>
         <connection>
             <pool>
@@ -28,16 +17,19 @@
             </pool>
         </connection>
         <statement>
-            <sql>INSERT INTO orders (order_id, customer_id, order_data, created_at) VALUES (?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE customer_id = VALUES(customer_id), order_data = VALUES(order_data), created_at = NOW()</sql>
+            <sql>INSERT INTO orders (order_id, customer_id, customer_name, item_count, total, order_data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE customer_id = VALUES(customer_id), customer_name = VALUES(customer_name), item_count = VALUES(item_count), total = VALUES(total), order_data = VALUES(order_data), created_at = NOW()</sql>
             <parameter expression="get-property('orderId')" type="VARCHAR"/>
             <parameter expression="get-property('customerId')" type="VARCHAR"/>
+            <parameter expression="get-property('customerName')" type="VARCHAR"/>
+            <parameter expression="get-property('itemCount')" type="INTEGER"/>
+            <parameter expression="get-property('orderTotal')" type="DOUBLE"/>
             <parameter expression="get-property('messageContent')" type="VARCHAR"/>
         </statement>
     </dbreport>
     
-    <!-- Step 5: Log success -->
+    <!-- Step 3: Log success (minimal) -->
     <log category="INFO" level="custom">
         <property name="OrderId" expression="get-property('orderId')"/>
-        <property name="Status" value="Order saved to database successfully"/>
+        <property name="Status" value="Saved"/>
     </log>
 </sequence>
