@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Common error handling sequence for all RabbitMQ listeners -->
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="RabbitMQErrorSequence">
+    <!-- Log error details -->
+    <log category="ERROR" level="custom">
+        <property name="ErrorMessage" expression="get-property('ERROR_MESSAGE')"/>
+        <property name="ErrorDetail" expression="get-property('ERROR_DETAIL')"/>
+        <property name="ErrorCode" expression="get-property('ERROR_CODE')"/>
+        <property name="RabbitMQListener" value="Error processing RabbitMQ message"/>
+    </log>
+    
+    <!-- Optional: Send to Dead Letter Queue (DLQ) -->
+    <!-- Uncomment to enable DLQ functionality -->
+    <!--
+    <property name="dlqQueue" value="dlq-queue" scope="default" type="STRING"/>
+    <property name="errorPayload" expression="$body" scope="default" type="STRING"/>
+    
+    <payloadFactory media-type="json">
+        <format>
+            {
+                "originalMessage": $1,
+                "error": {
+                    "message": "$2",
+                    "detail": "$3",
+                    "code": "$4",
+                    "timestamp": "$5"
+                }
+            }
+        </format>
+        <args>
+            <arg expression="get-property('errorPayload')"/>
+            <arg expression="get-property('ERROR_MESSAGE')"/>
+            <arg expression="get-property('ERROR_DETAIL')"/>
+            <arg expression="get-property('ERROR_CODE')"/>
+            <arg expression="get-property('SYSTEM_DATE')"/>
+        </args>
+    </payloadFactory>
+    -->
+    
+    <!-- Drop the message to prevent infinite loop -->
+    <drop/>
+</sequence>

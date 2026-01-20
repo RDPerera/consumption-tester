@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP protocol port
+      - "15672:15672"  # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - rabbitmq-logs:/var/log/rabbitmq
+      - ./deployment/rabbitmq-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    networks:
+      - wso2mi-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MySQL Database for Order Storage
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    hostname: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: orderdb
+      MYSQL_USER: dbuser
+      MYSQL_PASSWORD: dbpassword
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./deployment/docker/resources/init-orders-table.sql:/docker-entrypoint-initdb.d/01-init-orders.sql:ro
+      - ./deployment/docker/resources/init-batch-records-table.sql:/docker-entrypoint-initdb.d/02-init-batch.sql:ro
+    networks:
+      - wso2mi-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # RabbitMQ Queue Initializer
+  rabbitmq-init:
+    image: rabbitmq:3.12-management-alpine
+    container_name: rabbitmq-init
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - wso2mi-network
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for RabbitMQ to be ready..."
+        sleep 10
+        
+        echo "Installing rabbitmqadmin tool..."
+        wget -q http://rabbitmq:15672/cli/rabbitmqadmin -O /usr/local/bin/rabbitmqadmin
+        chmod +x /usr/local/bin/rabbitmqadmin
+        
+        echo "Creating RabbitMQ queues for WSO2 MI integration..."
+        
+        # Main order processing queue
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare queue \
+          name=orderQueue \
+          durable=true \
+          auto_delete=false \
+          arguments='{"x-message-ttl":604800000,"x-max-length":10000}'
+        
+        # Small payload queue
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare queue \
+          name=small-payload-queue \
+          durable=true \
+          auto_delete=false \
+          arguments='{"x-message-ttl":86400000}'
+        
+        # Medium payload queue
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare queue \
+          name=medium-payload-queue \
+          durable=true \
+          auto_delete=false \
+          arguments='{"x-message-ttl":259200000}'
+        
+        # Large payload queue
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare queue \
+          name=large-payload-queue \
+          durable=true \
+          auto_delete=false \
+          arguments='{"x-message-ttl":259200000}'
+        
+        # Very large payload queue
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare queue \
+          name=very-large-payload-queue \
+          durable=true \
+          auto_delete=false \
+          arguments='{"x-message-ttl":259200000}'
+        
+        # Dead Letter Queue for failed messages
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare queue \
+          name=dlq-queue \
+          durable=true \
+          auto_delete=false
+        
+        # Declare default exchange bindings (using default exchange)
+        rabbitmqadmin -H rabbitmq -u admin -p admin123 declare binding \
+          source=amq.direct \
+          destination_type=queue \
+          destination=orderQueue \
+          routing_key=orderQueue
+        
+        echo "✓ RabbitMQ queues created successfully!"
+        echo "✓ Management UI: http://localhost:15672 (admin/admin123)"
+        echo "✓ AMQP Connection: localhost:5672"
+
+volumes:
+  rabbitmq-data:
+    driver: local
+  rabbitmq-logs:
+    driver: local
+  mysql-data:
+    driver: local
+
+networks:
+  wso2mi-network:
+    driver: bridge

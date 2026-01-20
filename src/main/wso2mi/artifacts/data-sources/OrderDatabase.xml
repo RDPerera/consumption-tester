@@ -1,0 +1,20 @@
+<datasource>
+    <name>OrderDatabase</name>
+    <description>MySQL Database for Order Management</description>
+    <jndiConfig useDataSourceFactory="false">
+        <name>jdbc/OrderDB</name>
+    </jndiConfig>
+    <definition type="RDBMS">
+        <configuration>
+            <validationInterval>30000</validationInterval>
+            <validationQuery>SELECT 1</validationQuery>
+            <testOnBorrow>true</testOnBorrow>
+            <maxWait>60000</maxWait>
+            <maxActive>50</maxActive>
+            <driverClassName>com.mysql.jdbc.Driver</driverClassName>
+            <url>jdbc:mysql://localhost:3306/orderdb</url>
+            <username>root</username>
+            <password>Dilan@1998.</password>
+        </configuration>
+    </definition>
+</datasource>

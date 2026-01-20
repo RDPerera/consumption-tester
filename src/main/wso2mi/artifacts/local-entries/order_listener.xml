@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<localEntry key="rabbitmq" xmlns="http://ws.apache.org/ns/synapse">
+  <rabbitmq.init>
+    <connectionType>rabbitmq</connectionType>
+    <hostName>localhost</hostName>
+    <port>5672</port>
+    <userName>guest</userName>
+    <password>guest</password>
+    <virtualHost>/</virtualHost>
+    <connectionTimeout>30000</connectionTimeout>
+    <requestedHeartbeat>60</requestedHeartbeat>
+    <poolingEnabled>true</poolingEnabled>
+    <maxPoolSize>25</maxPoolSize>
+    <name>rabbitmq</name>
+  </rabbitmq.init>
+</localEntry>

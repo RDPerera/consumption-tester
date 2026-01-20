@@ -1,0 +1,574 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api context="/restapi" name="restapi" xmlns="http://ws.apache.org/ns/synapse">
+    <resource methods="POST" uri-template="/small">
+        <inSequence>
+            <log category="INFO" level="full"/>
+            <property name="jsonPayload" expression="json-eval($)" scope="default" type="STRING"/>
+            <filter source="json-eval($.username)" regex="testUser">
+                <then>
+                    <filter source="json-eval($.password)" regex="password123">
+                        <then>
+                            <log category="INFO" level="simple">
+                                <property name="Authentication" value="Success"/>
+                            </log>
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "success",
+                                    "message": "Authentication successful"
+                                    }
+                                </format>
+                                <args/>
+                            </payloadFactory>
+                        </then>
+                        <else>
+                            <log category="INFO" level="simple">
+                                <property name="Authentication" value="Failed - Incorrect Password"/>
+                            </log>
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "failure",
+                                    "message": "Incorrect password"
+                                    }
+                                </format>
+                                <args/>
+                            </payloadFactory>
+                        </else>
+                    </filter>
+                </then>
+                <else>
+                    <log category="INFO" level="simple">
+                        <property name="Authentication" value="Failed - Unknown User"/>
+                    </log>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                            "status": "failure",
+                            "message": "Unknown user"
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                </else>
+            </filter>
+            <respond/>
+        </inSequence>
+        <faultSequence>
+        </faultSequence>
+    </resource>
+    <resource methods="POST" uri-template="/medium">
+        <inSequence>
+            <!-- Log the incoming request for debugging -->
+            <log category="INFO" level="custom">
+                <property name="Message" value="Received order request at /medium endpoint"/>
+            </log>
+            
+            <!-- Extract order details from JSON payload -->
+            <property name="orderId" expression="json-eval($.orderId)" scope="default" type="STRING"/>
+            <property name="customerId" expression="json-eval($.customer.id)" scope="default" type="STRING"/>
+            <property name="customerName" expression="json-eval($.customer.name)" scope="default" type="STRING"/>
+            <property name="itemCount" expression="json-eval($.items.length())" scope="default" type="INTEGER"/>
+            <property name="orderTotal" expression="json-eval($.total)" scope="default" type="STRING"/>
+            
+            <!-- Validate required fields: orderId and customer.id -->
+            <filter xpath="get-property('orderId') = '' or get-property('orderId') = 'null' or not(get-property('orderId'))">
+                <then>
+                    <!-- orderId is missing - set failure response -->
+                    <log category="WARN" level="custom">
+                        <property name="ValidationError" value="Missing orderId in request"/>
+                    </log>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                            "status": "failure",
+                            "message": "Missing required field: orderId"
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <property name="HTTP_SC" value="400" scope="axis2" type="STRING"/>
+                </then>
+                <else>
+                    <!-- orderId is present, now check customer.id -->
+                    <filter xpath="get-property('customerId') = '' or get-property('customerId') = 'null' or not(get-property('customerId'))">
+                        <then>
+                            <!-- customer.id is missing - set failure response -->
+                            <log category="WARN" level="custom">
+                                <property name="ValidationError" value="Missing customer.id in request"/>
+                            </log>
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "failure",
+                                    "message": "Missing required field: customer.id"
+                                    }
+                                </format>
+                                <args/>
+                            </payloadFactory>
+                            <property name="HTTP_SC" value="400" scope="axis2" type="STRING"/>
+                        </then>
+                        <else>
+                            <!-- All required fields are present - proceed with processing -->
+                            <!-- Log order details -->
+                            <log category="INFO" level="custom">
+                                <property name="OrderId" expression="get-property('orderId')"/>
+                                <property name="CustomerName" expression="get-property('customerName')"/>
+                                <property name="ItemCount" expression="get-property('itemCount')"/>
+                                <property name="OrderTotal" expression="get-property('orderTotal')"/>
+                            </log>
+                            
+                            <!-- Store original payload for later use -->
+                            <property name="originalPayload" expression="json-eval($)" scope="default" type="STRING"/>
+                            
+                            <!-- Insert order into database using dbreport mediator -->
+                            <!-- Note: Ensure the orders table exists with columns: order_id, customer_id, customer_name, item_count, total -->
+                            <dbreport>
+                                <connection>
+                                    <pool>
+                                        <dsName>jdbc/orderdb</dsName>
+                                    </pool>
+                                </connection>
+                                <statement>
+                                    <sql>INSERT INTO orders (order_id, customer_id, customer_name, item_count, total, created_at) VALUES (?, ?, ?, ?, ?, NOW())</sql>
+                                    <parameter expression="get-property('orderId')" type="VARCHAR"/>
+                                    <parameter expression="get-property('customerId')" type="VARCHAR"/>
+                                    <parameter expression="get-property('customerName')" type="VARCHAR"/>
+                                    <parameter expression="get-property('itemCount')" type="INTEGER"/>
+                                    <parameter expression="get-property('orderTotal')" type="DOUBLE"/>
+                                </statement>
+                            </dbreport>
+                            
+                            <!-- Database insert successful - set success response -->
+                            <log category="INFO" level="custom">
+                                <property name="DatabaseOperation" value="Order inserted successfully"/>
+                                <property name="OrderId" expression="get-property('orderId')"/>
+                            </log>
+                            
+                            <!-- Construct success response using PayloadFactory -->
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "success",
+                                    "orderId": "$1"
+                                    }
+                                </format>
+                                <args>
+                                    <arg expression="get-property('orderId')"/>
+                                </args>
+                            </payloadFactory>
+                            <property name="HTTP_SC" value="200" scope="axis2" type="STRING"/>
+                        </else>
+                    </filter>
+                </else>
+            </filter>
+            
+            <!-- Common response handler for all paths -->
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <!-- Handle any errors that occur during processing -->
+            <log category="ERROR" level="custom">
+                <property name="ErrorMessage" expression="get-property('ERROR_MESSAGE')"/>
+                <property name="ErrorDetail" expression="get-property('ERROR_DETAIL')"/>
+                <property name="ErrorCode" expression="get-property('ERROR_CODE')"/>
+            </log>
+            
+            <!-- Construct error response -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                    "status": "failure",
+                    "message": "Database error occurred while processing order. Please try again later."
+                    }
+                </format>
+                <args/>
+            </payloadFactory>
+            <property name="HTTP_SC" value="500" scope="axis2" type="STRING"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+    <resource methods="POST" uri-template="/large">
+        <inSequence>
+            <!-- Log the incoming batch request -->
+            <log category="INFO" level="custom">
+                <property name="Message" value="Received large batch request at /large endpoint"/>
+            </log>
+            
+            <!-- Extract batch metadata from JSON payload -->
+            <property name="batchId" expression="json-eval($.batchId)" scope="default" type="STRING"/>
+            <property name="recordCount" expression="json-eval($.records.length())" scope="default" type="INTEGER"/>
+            
+            <!-- Initialize processed count to track successful insertions -->
+            <property name="processedCount" value="0" scope="default" type="INTEGER"/>
+            
+            <!-- Validate required field: batchId -->
+            <filter xpath="get-property('batchId') = '' or get-property('batchId') = 'null' or not(get-property('batchId'))">
+                <then>
+                    <!-- batchId is missing - set failure response -->
+                    <log category="WARN" level="custom">
+                        <property name="ValidationError" value="Missing batchId in request"/>
+                    </log>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                            "status": "failure",
+                            "message": "Missing required field: batchId"
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <property name="HTTP_SC" value="400" scope="axis2" type="STRING"/>
+                </then>
+                <else>
+                    <!-- Validate that records array exists and is not empty -->
+                    <filter xpath="get-property('recordCount') = 0 or not(get-property('recordCount'))">
+                        <then>
+                            <!-- No records found - set failure response -->
+                            <log category="WARN" level="custom">
+                                <property name="ValidationError" value="No records found in batch"/>
+                            </log>
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "failure",
+                                    "message": "No records found in batch"
+                                    }
+                                </format>
+                                <args/>
+                            </payloadFactory>
+                            <property name="HTTP_SC" value="400" scope="axis2" type="STRING"/>
+                        </then>
+                        <else>
+                            <!-- All validations passed - log batch metadata -->
+                            <log category="INFO" level="custom">
+                                <property name="BatchId" expression="get-property('batchId')"/>
+                                <property name="RecordCount" expression="get-property('recordCount')"/>
+                                <property name="ProcessingStatus" value="Starting batch processing"/>
+                            </log>
+                            
+                            <!-- Store original payload and batch context for later use -->
+                            <property name="originalPayload" expression="json-eval($)" scope="default" type="STRING"/>
+                            
+                            <!-- Use Iterate mediator to process each record in the array -->
+                            <!-- This splits the array and processes records individually to optimize memory -->
+                            <iterate continueParent="true" expression="json-eval($.records)" id="recordIterator" preservePayload="true" sequential="true">
+                                <target>
+                                    <sequence>
+                                        <!-- Extract individual record details -->
+                                        <property name="recordId" expression="json-eval($.id)" scope="default" type="INTEGER"/>
+                                        <property name="recordName" expression="json-eval($.name)" scope="default" type="STRING"/>
+                                        <property name="recordEmail" expression="json-eval($.email)" scope="default" type="STRING"/>
+                                        
+                                        <!-- Validate individual record fields -->
+                                        <filter xpath="get-property('recordId') = '' or not(get-property('recordId'))">
+                                            <then>
+                                                <log category="WARN" level="custom">
+                                                    <property name="ValidationError" value="Record missing id field"/>
+                                                </log>
+                                            </then>
+                                            <else>
+                                                <filter xpath="get-property('recordName') = '' or not(get-property('recordName'))">
+                                                    <then>
+                                                        <log category="WARN" level="custom">
+                                                            <property name="ValidationError" value="Record missing name field"/>
+                                                            <property name="RecordId" expression="get-property('recordId')"/>
+                                                        </log>
+                                                    </then>
+                                                    <else>
+                                                        <filter xpath="get-property('recordEmail') = '' or not(get-property('recordEmail'))">
+                                                            <then>
+                                                                <log category="WARN" level="custom">
+                                                                    <property name="ValidationError" value="Record missing email field"/>
+                                                                    <property name="RecordId" expression="get-property('recordId')"/>
+                                                                </log>
+                                                            </then>
+                                                            <else>
+                                                                <!-- All fields valid - insert into database -->
+                                                                <log category="DEBUG" level="custom">
+                                                                    <property name="ProcessingRecord" expression="get-property('recordId')"/>
+                                                                    <property name="Name" expression="get-property('recordName')"/>
+                                                                    <property name="Email" expression="get-property('recordEmail')"/>
+                                                                </log>
+                                                                
+                                                                <!-- Insert record into database using dbreport mediator -->
+                                                                <dbreport>
+                                                                    <connection>
+                                                                        <pool>
+                                                                            <dsName>jdbc/OrderDB</dsName>
+                                                                        </pool>
+                                                                    </connection>
+                                                                    <statement>
+                                                                        <sql>INSERT INTO batch_records (batch_id, record_id, name, email) VALUES (?, ?, ?, ?)</sql>
+                                                                        <parameter expression="get-property('batchId')" type="VARCHAR"/>
+                                                                        <parameter expression="get-property('recordId')" type="INTEGER"/>
+                                                                        <parameter expression="get-property('recordName')" type="VARCHAR"/>
+                                                                        <parameter expression="get-property('recordEmail')" type="VARCHAR"/>
+                                                                    </statement>
+                                                                </dbreport>
+                                                                
+                                                                <!-- Increment processed count using script mediator -->
+                                                                <script language="js">
+                                                                    <![CDATA[
+                                                                        var currentCount = mc.getProperty('processedCount');
+                                                                        if (currentCount == null || currentCount == '') {
+                                                                            currentCount = 0;
+                                                                        }
+                                                                        mc.setProperty('processedCount', parseInt(currentCount) + 1);
+                                                                    ]]>
+                                                                </script>
+                                                            </else>
+                                                        </filter>
+                                                    </else>
+                                                </filter>
+                                            </else>
+                                        </filter>
+                                    </sequence>
+                                </target>
+                            </iterate>
+                            
+                            <!-- After iterate completes, log summary -->
+                            <log category="INFO" level="custom">
+                                <property name="BatchProcessingComplete" value="All records processed"/>
+                                <property name="BatchId" expression="get-property('batchId')"/>
+                                <property name="TotalRecords" expression="get-property('recordCount')"/>
+                                <property name="ProcessedRecords" expression="get-property('processedCount')"/>
+                            </log>
+                            
+                            <!-- Construct success response with batch summary using PayloadFactory -->
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "processed",
+                                    "batchId": "$1",
+                                    "recordsProcessed": $2
+                                    }
+                                </format>
+                                <args>
+                                    <arg expression="get-property('batchId')"/>
+                                    <arg expression="get-property('processedCount')"/>
+                                </args>
+                            </payloadFactory>
+                            <property name="HTTP_SC" value="200" scope="axis2" type="STRING"/>
+                        </else>
+                    </filter>
+                </else>
+            </filter>
+            
+            <!-- Common response handler for all paths -->
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <!-- Handle any errors that occur during batch processing -->
+            <log category="ERROR" level="custom">
+                <property name="ErrorMessage" expression="get-property('ERROR_MESSAGE')"/>
+                <property name="ErrorDetail" expression="get-property('ERROR_DETAIL')"/>
+                <property name="ErrorCode" expression="get-property('ERROR_CODE')"/>
+                <property name="BatchId" expression="get-property('batchId')"/>
+            </log>
+            
+            <!-- Construct error response -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                    "status": "failure",
+                    "message": "Error occurred while processing batch. Please check logs for details."
+                    }
+                </format>
+                <args/>
+            </payloadFactory>
+            <property name="HTTP_SC" value="500" scope="axis2" type="STRING"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+    
+    <!-- Very Large Payload API Resource - Handles Base64-encoded file uploads (1-5 MB+) -->
+    <resource methods="POST" uri-template="/verylarge">
+        <inSequence>
+            <!-- Step 1: Log incoming request (minimal logging to avoid performance impact) -->
+            <log category="INFO" level="custom">
+                <property name="Endpoint" value="/restapi/veryLarge"/>
+                <property name="Operation" value="File Upload Request Received"/>
+            </log>
+            <!-- Step 2: Enable streaming to handle large payloads efficiently -->
+            <!-- This prevents loading entire payload into memory -->
+            <property name="messageType" value="application/json" scope="axis2" type="STRING"/>
+            <property name="FORCE_HTTP_CONTENT_LENGTH" value="true" scope="axis2" type="STRING"/>
+            <property name="DISABLE_CHUNKING" value="false" scope="axis2" type="STRING"/>
+            <!-- Step 3: Extract and validate required fields -->
+            <property name="fileName" expression="json-eval($.fileName)" scope="default" type="STRING"/>
+            <property name="fileContent" expression="json-eval($.content)" scope="default" type="STRING"/>
+            <!-- Step 4: Validate that fileName is present -->
+            <filter xpath="get-property('fileName') = '' or not(get-property('fileName'))">
+                <then>
+                    <!-- Missing fileName - return error response -->
+                    <log category="WARN" level="custom">
+                        <property name="ValidationError" value="Missing required field: fileName"/>
+                    </log>
+                    <payloadFactory media-type="json">
+                        <format>
+                            {
+                            "status": "failure",
+                            "message": "Missing required field: fileName"
+                            }
+                        </format>
+                        <args/>
+                    </payloadFactory>
+                    <property name="HTTP_SC" value="400" scope="axis2" type="STRING"/>
+                    <respond/>
+                </then>
+                <else>
+                    <!-- Step 5: Validate that content is present -->
+                    <filter xpath="get-property('fileContent') = '' or not(get-property('fileContent'))">
+                        <then>
+                            <!-- Missing content - return error response -->
+                            <log category="WARN" level="custom">
+                                <property name="ValidationError" value="Missing required field: content"/>
+                                <property name="FileName" expression="get-property('fileName')"/>
+                            </log>
+                            <payloadFactory media-type="json">
+                                <format>
+                                    {
+                                    "status": "failure",
+                                    "message": "Missing required field: content"
+                                    }
+                                </format>
+                                <args/>
+                            </payloadFactory>
+                            <property name="HTTP_SC" value="400" scope="axis2" type="STRING"/>
+                            <respond/>
+                        </then>
+                        <else>
+                            <!-- Step 6: All required fields present - proceed with file processing -->
+                            <!-- Calculate approximate file size from Base64 content length -->
+                            <!-- Base64 encoding increases size by ~33%, so decoded size ≈ (length * 3/4) -->
+                            <script language="js">
+                                <![CDATA[
+                                    var base64Content = mc.getProperty('fileContent');
+                                    var base64Length = base64Content.length;
+                                    // Calculate approximate decoded size in bytes
+                                    var decodedSize = Math.floor((base64Length * 3) / 4);
+                                    // Handle padding characters
+                                    var padding = (base64Content.match(/=/g) || []).length;
+                                    decodedSize = decodedSize - padding;
+                                    
+                                    // Convert to human-readable format
+                                    var fileSizeKB = (decodedSize / 1024).toFixed(2);
+                                    var fileSizeMB = (decodedSize / (1024 * 1024)).toFixed(2);
+                                    
+                                    mc.setProperty('fileSize', decodedSize.toString());
+                                    mc.setProperty('fileSizeKB', fileSizeKB);
+                                    mc.setProperty('fileSizeMB', fileSizeMB);
+                                    
+                                    // Generate timestamp for unique file naming
+                                    var timestamp = new Date().getTime();
+                                    mc.setProperty('timestamp', timestamp.toString());
+                                ]]>
+                            </script>
+                            <!-- Step 7: Log file metadata (optimized logging) -->
+                            <log category="INFO" level="custom">
+                                <property name="FileName" expression="get-property('fileName')"/>
+                                <property name="FileSizeMB" expression="get-property('fileSizeMB')"/>
+                                <property name="FileSizeKB" expression="get-property('fileSizeKB')"/>
+                                <property name="ProcessingStatus" value="Starting file save operation"/>
+                            </log>
+                            <!-- Step 8: Decode Base64 content and prepare for file write -->
+                            <!-- Create file path with timestamp to avoid overwrites -->
+                            <property name="outputDirectory" value="/tmp/wso2mi/uploads" scope="default" type="STRING"/>
+                            <property name="fileNameWithTimestamp" expression="fn:concat(get-property('timestamp'), '_', get-property('fileName'))" scope="default" type="STRING"/>
+                            <property name="fullFilePath" expression="fn:concat(get-property('outputDirectory'), '/', get-property('fileNameWithTimestamp'))" scope="default" type="STRING"/>
+                            <!-- Step 9: Construct VFS transport parameters for file writing -->
+                            <!-- Using VFS for efficient large file handling -->
+                            <property name="transport.vfs.ReplyFileName" expression="get-property('fileNameWithTimestamp')" scope="transport" type="STRING"/>
+                            <property name="OUT_ONLY" value="true" scope="default" type="STRING"/>
+                            <!-- Step 10: Create payload with decoded content for VFS write -->
+                            <payloadFactory media-type="text">
+                                <format>$1</format>
+                                <args>
+                                    <arg expression="base64Decode(get-property('fileContent'))"/>
+                                </args>
+                            </payloadFactory>
+                            <!-- Step 11: Write file to local directory using VFS -->
+                            <!-- Clone the message to write to file while preparing response -->
+                            <clone>
+                                <target>
+                                    <!-- Write to file asynchronously -->
+                                    <sequence>
+                                        <property name="OUT_ONLY" value="true" scope="default" type="STRING"/>
+                                        <send>
+                                            <endpoint>
+                                                <address uri="vfs:file:///tmp/wso2mi/uploads"/>
+                                            </endpoint>
+                                        </send>
+                                    </sequence>
+                                </target>
+                                <target>
+                                    <!-- Prepare success response -->
+                                    <sequence>
+                                        <!-- Step 12: Log successful file save operation -->
+                                        <log category="INFO" level="custom">
+                                            <property name="Operation" value="File saved successfully"/>
+                                            <property name="FileName" expression="get-property('fileName')"/>
+                                            <property name="SavedAs" expression="get-property('fileNameWithTimestamp')"/>
+                                            <property name="FileSizeMB" expression="get-property('fileSizeMB')"/>
+                                            <property name="FilePath" expression="get-property('fullFilePath')"/>
+                                        </log>
+                                        <!-- Step 13: Construct success response using PayloadFactory -->
+                                        <payloadFactory media-type="json">
+                                            <format>
+                                                {
+                                                "status": "success",
+                                                "fileName": "$1",
+                                                "message": "File saved successfully",
+                                                "metadata": {
+                                                "originalFileName": "$2",
+                                                "savedFileName": "$3",
+                                                "fileSizeMB": "$4",
+                                                "filePath": "$5"
+                                                }
+                                                }
+                                            </format>
+                                            <args>
+                                                <arg expression="get-property('fileName')"/>
+                                                <arg expression="get-property('fileName')"/>
+                                                <arg expression="get-property('fileNameWithTimestamp')"/>
+                                                <arg expression="get-property('fileSizeMB')"/>
+                                                <arg expression="get-property('fullFilePath')"/>
+                                            </args>
+                                        </payloadFactory>
+                                        <property name="HTTP_SC" value="200" scope="axis2" type="STRING"/>
+                                        <respond/>
+                                    </sequence>
+                                </target>
+                            </clone>
+                        </else>
+                    </filter>
+                </else>
+            </filter>
+        </inSequence>
+        <faultSequence>
+            <!-- Step 14: Handle any errors during file processing -->
+            <log category="ERROR" level="custom">
+                <property name="ErrorMessage" expression="get-property('ERROR_MESSAGE')"/>
+                <property name="ErrorDetail" expression="get-property('ERROR_DETAIL')"/>
+                <property name="ErrorCode" expression="get-property('ERROR_CODE')"/>
+                <property name="FileName" expression="get-property('fileName')"/>
+                <property name="Operation" value="File upload failed"/>
+            </log>
+            <!-- Step 15: Construct error response -->
+            <payloadFactory media-type="json">
+                <format>
+                    {
+                    "status": "failure",
+                    "message": "Failed to save file. Error: $1"
+                    }
+                </format>
+                <args>
+                    <arg expression="get-property('ERROR_MESSAGE')"/>
+                </args>
+            </payloadFactory>
+            <property name="HTTP_SC" value="500" scope="axis2" type="STRING"/>
+            <respond/>
+        </faultSequence>
+    </resource>
+</api>

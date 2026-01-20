@@ -1,0 +1,18 @@
+{
+  "type": "API",
+  "/small": {
+    "requests": [
+      {
+        "name": "auth",
+        "contentType": "application/json",
+        "content": {
+          "username": "testUser",
+          "password": "password123"
+        },
+        "queryParams": {},
+        "pathParams": {}
+      }
+    ],
+    "defaultRequest": "auth"
+  }
+}

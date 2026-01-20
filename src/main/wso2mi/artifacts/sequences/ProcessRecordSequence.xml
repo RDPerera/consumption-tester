@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence name="ProcessRecordSequence" xmlns="http://ws.apache.org/ns/synapse">
+    <!-- Extract individual record details -->
+    <property name="recordId" expression="json-eval($.id)" scope="default" type="INTEGER"/>
+    <property name="recordName" expression="json-eval($.name)" scope="default" type="STRING"/>
+    <property name="recordEmail" expression="json-eval($.email)" scope="default" type="STRING"/>
+    
+    <!-- Validate individual record fields -->
+    <filter xpath="get-property('recordId') = '' or not(get-property('recordId'))">
+        <then>
+            <log category="WARN" level="custom">
+                <property name="ValidationError" value="Record missing id field"/>
+            </log>
+            <drop/>
+        </then>
+        <else>
+            <filter xpath="get-property('recordName') = '' or not(get-property('recordName'))">
+                <then>
+                    <log category="WARN" level="custom">
+                        <property name="ValidationError" value="Record missing name field"/>
+                        <property name="RecordId" expression="get-property('recordId')"/>
+                    </log>
+                    <drop/>
+                </then>
+                <else>
+                    <filter xpath="get-property('recordEmail') = '' or not(get-property('recordEmail'))">
+                        <then>
+                            <log category="WARN" level="custom">
+                                <property name="ValidationError" value="Record missing email field"/>
+                                <property name="RecordId" expression="get-property('recordId')"/>
+                            </log>
+                            <drop/>
+                        </then>
+                        <else>
+                            <!-- All fields valid - insert into database -->
+                            <log category="INFO" level="custom">
+                                <property name="ProcessingRecord" expression="get-property('recordId')"/>
+                                <property name="Name" expression="get-property('recordName')"/>
+                                <property name="Email" expression="get-property('recordEmail')"/>
+                            </log>
+                            
+                            <!-- Insert record into database -->
+                            <dbreport>
+                                <connection>
+                                    <pool>
+                                        <dsName>jdbc/OrderDB</dsName>
+                                    </pool>
+                                </connection>
+                                <statement>
+                                    <sql>INSERT INTO batch_records (batch_id, record_id, name, email) VALUES (?, ?, ?, ?)</sql>
+                                    <parameter expression="get-property('batchId')" type="VARCHAR"/>
+                                    <parameter expression="get-property('recordId')" type="INTEGER"/>
+                                    <parameter expression="get-property('recordName')" type="VARCHAR"/>
+                                    <parameter expression="get-property('recordEmail')" type="VARCHAR"/>
+                                </statement>
+                            </dbreport>
+                            
+                            <!-- Increment processed count -->
+                            <script language="js">
+                                <![CDATA[
+                                    var currentCount = mc.getProperty('processedCount');
+                                    if (currentCount == null || currentCount == '') {
+                                        currentCount = 0;
+                                    }
+                                    mc.setProperty('processedCount', parseInt(currentCount) + 1);
+                                ]]>
+                            </script>
+                        </else>
+                    </filter>
+                </else>
+            </filter>
+        </else>
+    </filter>
+</sequence>

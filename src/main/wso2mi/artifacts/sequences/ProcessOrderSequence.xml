@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sequence to process messages from orderQueue -->
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="ProcessOrderSequence">
+    <!-- Step 1: Log incoming message from RabbitMQ -->
+    <log category="INFO" level="custom">
+        <property name="Listener" value="OrderQueueListener"/>
+        <property name="Queue" value="orderQueue"/>
+        <property name="Message" expression="$body"/>
+    </log>
+    
+    <!-- Step 2: Extract message content -->
+    <property name="messageContent" expression="json-eval($)" scope="default" type="STRING"/>
+    <property name="orderId" expression="json-eval($.orderId)" scope="default" type="STRING"/>
+    <property name="customerId" expression="json-eval($.customer.id)" scope="default" type="STRING"/>
+    
+    <!-- Step 3: Log extracted details -->
+    <log category="INFO" level="custom">
+        <property name="OrderId" expression="get-property('orderId')"/>
+        <property name="CustomerId" expression="get-property('customerId')"/>
+        <property name="Status" value="Processing order from RabbitMQ"/>
+    </log>
+    
+    <!-- Step 4: Store in database -->
+    <dbreport>
+        <connection>
+            <pool>
+                <dsName>jdbc/orderdb</dsName>
+            </pool>
+        </connection>
+        <statement>
+            <sql>INSERT INTO orders (order_id, customer_id, order_data, created_at) VALUES (?, ?, ?, NOW())</sql>
+            <parameter expression="get-property('orderId')" type="VARCHAR"/>
+            <parameter expression="get-property('customerId')" type="VARCHAR"/>
+            <parameter expression="get-property('messageContent')" type="VARCHAR"/>
+        </statement>
+    </dbreport>
+    
+    <!-- Step 5: Log success -->
+    <log category="INFO" level="custom">
+        <property name="OrderId" expression="get-property('orderId')"/>
+        <property name="Status" value="Order saved to database successfully"/>
+    </log>
+</sequence>
