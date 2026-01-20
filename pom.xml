@@ -412,17 +412,5 @@
             <version>5.18.0</version>
             <scope>compile</scope>
         </dependency>
-        <dependency>
-            <groupId>org.wso2.integration.connector</groupId>
-            <artifactId>mi-connector-http</artifactId>
-            <version>0.1.13</version>
-            <type>zip</type>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
     </dependencies>
 </project>
