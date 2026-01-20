@@ -513,7 +513,7 @@ def run_test(test_name, test_func, duration_seconds, concurrent_users, *args):
     }
 
 
-def run_comprehensive_test(duration=60, concurrent=20, base_url=BASE_URL, test_rabbitmq=True):
+def run_comprehensive_test(duration=60, concurrent=20, base_url=BASE_URL, test_rabbitmq=True, small_only=False):
     """Run comprehensive test on all endpoints and listener simultaneously"""
     
     # Load payload templates
@@ -526,16 +526,24 @@ def run_comprehensive_test(duration=60, concurrent=20, base_url=BASE_URL, test_r
     print(f"   Target: {base_url}")
     if test_rabbitmq:
         print(f"   RabbitMQ: {RABBITMQ_HOST}:{RABBITMQ_PORT} -> Queue: {RABBITMQ_QUEUE}")
+    if small_only:
+        print(f"   Mode: SMALL PAYLOADS ONLY (optimized for maximum TPS)")
     print(f"   Start: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'#'*90}")
     
     # Prepare all tests
-    all_tests = [
-        ("REST API - Small Payload (1-10 KB)", test_rest_api, "small", PayloadGenerator.generate_small_payload, base_url),
-        ("REST API - Medium Payload (10-100 KB)", test_rest_api, "medium", PayloadGenerator.generate_medium_payload, base_url),
-        ("REST API - Large Payload (100KB-1MB)", test_rest_api, "large", PayloadGenerator.generate_large_payload, base_url),
-        ("REST API - Very Large Payload (1-10MB)", test_rest_api, "verylarge", PayloadGenerator.generate_very_large_payload, base_url),
-    ]
+    if small_only:
+        # Only test small payloads for maximum TPS
+        all_tests = [
+            ("REST API - Small Payload (1-10 KB)", test_rest_api, "small", PayloadGenerator.generate_small_payload, base_url),
+        ]
+    else:
+        all_tests = [
+            ("REST API - Small Payload (1-10 KB)", test_rest_api, "small", PayloadGenerator.generate_small_payload, base_url),
+            ("REST API - Medium Payload (10-100 KB)", test_rest_api, "medium", PayloadGenerator.generate_medium_payload, base_url),
+            ("REST API - Large Payload (100KB-1MB)", test_rest_api, "large", PayloadGenerator.generate_large_payload, base_url),
+            ("REST API - Very Large Payload (1-10MB)", test_rest_api, "verylarge", PayloadGenerator.generate_very_large_payload, base_url),
+        ]
     
     # Add RabbitMQ test if enabled
     rabbitmq_tests = []
@@ -617,11 +625,14 @@ Examples:
   # Run comprehensive test (all APIs + RabbitMQ)
   python consumption_tester.py --duration 60 --concurrent 20
   
+  # Test only small payloads for maximum TPS
+  python consumption_tester.py --duration 60 --concurrent 50 --small-only
+  
   # Test only REST APIs (skip RabbitMQ)
   python consumption_tester.py --duration 30 --concurrent 10 --no-rabbitmq
   
-  # High load test
-  python consumption_tester.py --duration 120 --concurrent 50
+  # High load test with small payloads
+  python consumption_tester.py --duration 120 --concurrent 100 --small-only
   
   # Quick smoke test
   python consumption_tester.py --duration 10 --concurrent 5
@@ -646,6 +657,8 @@ Examples:
                         help="RabbitMQ queue name (default: orderQueue)")
     parser.add_argument("--no-rabbitmq", action="store_true",
                         help="Skip RabbitMQ listener tests")
+    parser.add_argument("--small-only", action="store_true",
+                        help="Only test small payloads for maximum TPS")
     
     args = parser.parse_args()
     
@@ -663,7 +676,8 @@ Examples:
             duration=args.duration,
             concurrent=args.concurrent,
             base_url=BASE_URL,
-            test_rabbitmq=not args.no_rabbitmq
+            test_rabbitmq=not args.no_rabbitmq,
+            small_only=args.small_only
         )
     except KeyboardInterrupt:
         print("\n\n⚠️  Test interrupted by user")

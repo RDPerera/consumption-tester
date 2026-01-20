@@ -12,7 +12,7 @@
             <maxWait>60000</maxWait>
             <maxActive>50</maxActive>
             <driverClassName>com.mysql.jdbc.Driver</driverClassName>
-            <url>jdbc:mysql://localhost:3306/orderdb</url>
+            <url>jdbc:mysql://127.0.0.1:3306/orderdb</url>
             <username>root</username>
             <password>Dilan@1998.</password>
         </configuration>

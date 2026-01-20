@@ -300,7 +300,7 @@
                                                                         </pool>
                                                                     </connection>
                                                                     <statement>
-                                                                        <sql>INSERT INTO batch_records (batch_id, record_id, name, email) VALUES (?, ?, ?, ?)</sql>
+                                                                        <sql>INSERT INTO batch_records (batch_id, record_id, name, email) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), email = VALUES(email), processed_at = CURRENT_TIMESTAMP</sql>
                                                                         <parameter expression="get-property('batchId')" type="VARCHAR"/>
                                                                         <parameter expression="get-property('recordId')" type="INTEGER"/>
                                                                         <parameter expression="get-property('recordName')" type="VARCHAR"/>
